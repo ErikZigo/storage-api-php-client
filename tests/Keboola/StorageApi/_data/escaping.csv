@@ -1,7 +1,8 @@
 col1,col2
-"standard with enclosure",neco
-"item with
-line break","second row"
-"enclosure inside test"" escaped with enclosure and with backslash \" on the end",another
-"backslash \ in text","backslash escaped with basckslash \\ in text"
-"[{""about"":0,""name"":""\\""Stored by way of Bell: The Recent Class\\"""",""sentiment"":0}]","another"
+line without enclosure,second column
+"line with enclosure","second column"
+"column with enclosure "", and comma inside text","second column enclosure in text """
+"columns with
+new line","columns with	tab"
+"column with backshash \ inside","column with backslash and enclosure \"""
+"column with \n \t \\","second col"
