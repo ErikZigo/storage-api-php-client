@@ -334,18 +334,47 @@ class Client
 							   $incremental=false, $partial=false)
 	{
 		// TODO Gzip data
-		$options = array(
-			"tableId" => $tableId,
+		$postData = array(
 			"delimiter" => $delimiter,
 			"enclosure" => $enclosure,
 			"transaction" => $transaction,
 			"incremental" => $incremental,
 			"partial" => $partial,
-			"data" => "@" . $dataFile
+			"data" => "@$dataFile"
 		);
-		$result = $this->_apiPost("/storage/tables/{$tableId}/import" , $options);
 
-		$this->_log("Data written to table {$tableId}", array("options" => $options, "result" => $result));
+		$command = 'curl -k ';
+		foreach ($this->_getHeaders() as $header) {
+			$command .= " -H " . escapeshellarg($header);
+		}
+		foreach ($postData as $postKey => $postValue) {
+			$command .= " -F " . escapeshellarg($postKey . "=" . $postValue);
+		}
+
+		$url = $this->_constructUrl("/storage/tables/{$tableId}/import");
+		$command .= " " . escapeshellarg($url);
+
+		$process = new \Symfony\Component\Process\Process($command, null, null, null, $this->getTimeout());
+		$process->run();
+		if (!$process->isSuccessful()) {
+		    throw new \RuntimeException($process->getErrorOutput());
+		}
+
+		$this->_log("POST Request finished");
+		try{
+			return $this->_parseResponse($process->getOutput());
+		} catch (ClientException $e) {
+			$errData = array(
+				"error" => $e->getMessage(),
+				"url" => $url,
+				"postData" => $postData
+			);
+			$this->_log("Error in POST request response", $errData);
+			throw $e;
+		}
+
+
+		$this->_log("Data written to table {$tableId}", array("options" => $postData, "result" => $result));
 
 		return $result;
 	}
@@ -1101,9 +1130,7 @@ class Client
 	 */
 	protected function _curlSetOpts($headers = array())
 	{
-		if ($this->getRunId()) {
-			$headers[] = 'X-KBC-RunId: ' . $this->getRunId();
-		}
+
 
 		$ch = curl_init();
 		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -1116,9 +1143,19 @@ class Client
 		curl_setopt($ch, CURLOPT_USERAGENT, $this->_userAgent);
 		curl_setopt($ch, CURLOPT_HTTPHEADER, array_merge(array(
 			"Connection: close",
-			"X-StorageApi-Token: {$this->token}",
-		), $headers));
+		), $this->_getHeaders(), $headers));
 		return $ch;
+	}
+
+	protected function _getHeaders()
+	{
+		$headers = array(
+			"X-StorageApi-Token: {$this->token}",
+		);
+		if ($this->getRunId()) {
+			$headers[] = 'X-KBC-RunId: ' . $this->getRunId();
+		}
+		return $headers;
 	}
 
 	/**
