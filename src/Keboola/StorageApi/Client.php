@@ -350,6 +350,7 @@ class Client
 		foreach ($postData as $postKey => $postValue) {
 			$command .= " -F " . escapeshellarg($postKey . "=" . $postValue);
 		}
+		$command .= " --max-time " . escapeshellarg($this->getTimeout());
 
 		$url = $this->_constructUrl("/storage/tables/{$tableId}/import");
 		$command .= " " . escapeshellarg($url);
