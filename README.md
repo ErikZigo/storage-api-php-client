@@ -1,4 +1,7 @@
 # Keboola Storage API PHP client
+[![Latest Stable Version](https://poser.pugx.org/keboola/storage-api-client/v/stable.svg)](https://packagist.org/packages/keboola/storage-api-client)
+[![License](https://poser.pugx.org/keboola/storage-api-client/license.svg)](https://packagist.org/packages/keboola/storage-api-client)
+[![Total Downloads](https://poser.pugx.org/keboola/storage-api-client/downloads.svg)](https://packagist.org/packages/keboola/storage-api-client)
 
 Simple PHP wrapper library for [Keboola Storage REST API](http://docs.keboola.apiary.io/)
 
@@ -19,7 +22,7 @@ mv ./composer.phar ~/bin/composer # or /usr/local/bin/composer
 {
     "require": {
         "php" : ">=5.4.0",
-        "keboola/storage-api-client": "2.11.*"
+        "keboola/storage-api-client": "2.12.*"
     }
 }
 ```
@@ -38,11 +41,13 @@ require 'vendor/autoload.php';
 
 Read more in [Composer documentation](http://getcomposer.org/doc/01-basic-usage.md)
 
-## Usage
+## Usage examples
 
-Table write example:
+Table write:
 
 ```php
+require 'vendor/autoload.php';
+
 use Keboola\StorageApi\Client,
 	Keboola\Csv\CsvFile;
 
@@ -51,6 +56,21 @@ $client = new Client([
 ]);
 $csvFile = new CsvFile(__DIR__ . '/my.csv', ',', '"');
 $client->writeTableAsync('in.c-main.my-table', $csvFile);
+```
+
+Table export to file:
+
+```php
+require 'vendor/autoload.php';
+
+use Keboola\StorageApi\Client,
+  Keboola\StorageApi\TableExporter;
+
+$client = new Client(['token' => 'YOUR_TOKEN',]);
+
+$exporter = new TableExporter($client);
+$exporter->exportTable('in.c-main.my-table', './in.c-main.my-table.csv', []);
+
 ```
 
 ## Tests
@@ -64,7 +84,7 @@ Tests expects master token and performs all operations including bucket and tabl
 
 **Never run this tests on production project with real data, always create project for testing purposes!!!**
 
-When the parameters are set you can run tests by **phpunit** command.
+When the parameters are set you can run tests by **php vendor/bin/phpunit** command.
 
 ## Release History
 See the [CHANGELOG](CHANGELOG.md).

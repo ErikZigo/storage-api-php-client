@@ -59,10 +59,14 @@ class Keboola_StorageApi_Tables_ExportParamsTest extends StorageApiTestCase
 		unlink($outputFile);
 	}
 
-	public function testTableExportParams()
+	/**
+	 * @param $backend
+	 * @dataProvider backends
+	 */
+	public function testTableExportParams($backend)
 	{
 		$importFile =  __DIR__ . '/../_data/languages.csv';
-		$tableId = $this->_client->createTable($this->getTestBucketId(), 'languages', new CsvFile($importFile));
+		$tableId = $this->_client->createTable($this->getTestBucketId(self::STAGE_IN, $backend), 'languages', new CsvFile($importFile));
 
 		$originalFileLinesCount = exec("wc -l <" . escapeshellarg($importFile));
 
@@ -203,6 +207,7 @@ class Keboola_StorageApi_Tables_ExportParamsTest extends StorageApiTestCase
 		$exportedFile = $this->_client->getFile($results['file']['id'], (new \Keboola\StorageApi\Options\GetFileOptions())->setFederationToken(true));
 
 		$this->assertTrue($exportedFile['isSliced']);
+		$this->assertGreaterThan(0, $exportedFile['sizeBytes']);
 
 		$manifest = json_decode(file_get_contents($exportedFile['url']), true);
 

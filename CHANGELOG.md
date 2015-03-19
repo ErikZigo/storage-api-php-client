@@ -1,3 +1,87 @@
+## 2.12.7 (2015-02-21)
+ * [Fix] `TableExporter` fixed columns parameter handling
+ * [Fix] `TableExporter` fix in default format used for header composition for sliced files
+
+## 2.12.6 (2015-02-21)
+ * [Fix] revert of changes from 2.12.5
+
+## 2.12.5 (2015-02-20)
+  * [Fix] Forward `columns` attribute in export option in `TableExporter`
+  * [Fix] Fix phpdoc in `TableExporter`
+
+## 2.12.4 (2015-01-24)
+  * [Fix] close file commands
+
+## 2.12.3 (2015-01-23)
+  * [Fix] added close file commands for windows compatibility
+  * [Fix] added error checking in Table constructor
+
+## 2.12.2 (2015-01-20)
+  * [Feat] Redshift aliases supported
+
+## 2.12.1 (2015-01-09)
+   * [Feat] `Components` - component configuration JSON storage
+
+## 2.12.0 (2014-12-30)
+   * [BC break] `file uploads` files are encrypted by default. `x-amz-server-side-encryption` header has to be added to direct uploads to S3, if `uploadFile` method is used nothing has to be changed.
+
+## 2.11.28 (2014-12-30)
+   * [Feat] `file uploads` encryption support
+
+## 2.11.27 (2014-11-12)
+   * [Feat] `generateRunId` method added, support for runId hieararchy
+
+## 2.11.26 (2014-11-10)
+  * [Fix] allow guzzlehttp 4.0 =< 5 (4.1.2 is buggy)
+
+## 2.11.25 (2014-11-10)
+  * [Fix] Client version
+
+## 2.11.24 (2014-10-21)
+  * [Feat] List Files `maxId` and `sinceId` parameters added
+
+## 2.11.23 (2014-10-29)
+  * [Feat] Bucket credentials resource support added
+
+## 2.11.22 (2014-10-21)
+  * [Feat] Client version in user agent
+  * [Fix] file upload - S3 error response body
+
+## 2.11.21 (2014-10-20)
+  * [Fix] tableExporter - remove SSL v3
+
+## 2.11.20 (2014-09-16)
+  * [Feat] Components - get configuration method added
+
+## 2.11.19 (2014-09-16)
+  * [Feat] Components resource added
+
+## 2.11.18 (2014-09-02)
+  * [Feat] File uploads - don't notify by default
+
+## 2.11.17 (2014-07-24)
+  * [Fix] Table exporter - process timeout
+
+## 2.11.16 (2014-07-17)
+  * [Feat] Delete file from file uploads
+
+## 2.11.15 (2014-07-16)
+  * [Fix] Handling of non-json response from SAPI
+  * [Fix] Redshift escaped format
+
+## 2.11.14 (2014-07-14)
+  * [Fix] TableExporter - Symfony 2.3 compatibility
+
+## 2.11.13 (2014-07-08)
+  * [Fix] TableExporter - overwrite existing destination file
+
+## 2.11.12 (2014-07-08)
+  * [Improvement] Allow Symfony components from 2.3
+
+## 2.11.11 (2014-06-26)
+  * [Feat] Event subsriber
+  * [Bugfix] Table class - csv file delimiter and enclosure
+
 ## 2.11.10 (2014-06-17)
   * [Improvement] TableExporter - use custom S3 backoff
   * [Bugfix] Tests - allow listObjects with prefix on sliced async exports
@@ -207,4 +291,3 @@ HTTP backend migrated to Guzzle 4.0.
 
 ## 2.6.17
  * [Feature] Table export formats: `rfc`, `escaped`, `raw`
-

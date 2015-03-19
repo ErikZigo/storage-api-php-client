@@ -13,6 +13,7 @@ namespace Keboola\StorageApi;
 
 use Keboola\StorageApi\Aws\S3\S3Client;
 use Symfony\Component\Filesystem\Filesystem;
+use Symfony\Component\Process\Exception\ProcessFailedException;
 use Symfony\Component\Process\Process;
 
 class TableExporter
@@ -33,9 +34,9 @@ class TableExporter
 	 *
 	 * Process async export and prepare the file on disk
 	 *
-	 * @param $tableId SAPI Table Id
-	 * @param $destination destination file
-	 * @param $exportOptions SAPI Client export options
+	 * @param $tableId string SAPI Table Id
+	 * @param $destination string destination file
+	 * @param $exportOptions array SAPI Client export options
 	 * @return void
 	 */
 	public function exportTable($tableId, $destination, $exportOptions)
@@ -58,7 +59,6 @@ class TableExporter
 
 		// CURL options
 		$s3Client->getConfig()->set('curl.options', array(
-			CURLOPT_SSLVERSION => 3,
 			CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_0
 		));
 
@@ -69,6 +69,10 @@ class TableExporter
 		$fs = new Filesystem();
 		if (!$fs->exists($workingDir)) {
 			$fs->mkdir($workingDir);
+		}
+
+		if ($fs->exists($destination)) {
+			$fs->remove($destination);
 		}
 
 		$tmpFilePath = $workingDir . '/' . uniqid('sapi-export-');
@@ -95,7 +99,7 @@ class TableExporter
 			}
 
 			// Create file with header
-			$format = 'raw';
+			$format = 'rfc';
 			if (isset($exportOptions['format'])) {
 				$format = $exportOptions['format'];
 			}
@@ -109,12 +113,18 @@ class TableExporter
 					$enclosure = '"';
 					break;
 				case 'escaped':
-					$delimiter = "\t";
+					$delimiter = ",";
 					$enclosure = '"';
 					break;
 			}
 
-			$header = $enclosure . join($table["columns"], $enclosure . $delimiter . $enclosure) . $enclosure . "\n";
+			if (isset($exportOptions["columns"])) {
+				$columns = $exportOptions["columns"];
+			} else {
+				$columns = $table["columns"];
+			}
+
+			$header = $enclosure . join($columns, $enclosure . $delimiter . $enclosure) . $enclosure . "\n";
 			if ($exportOptions["gzip"] === true) {
 				$fs->dumpFile($destination . '.tmp', $header);
 			} else {
@@ -128,14 +138,22 @@ class TableExporter
 				} else {
 					$catCmd = "cat " . escapeshellarg($file) ." >> " . escapeshellarg($destination);
 				}
-				(new Process($catCmd))->mustRun();
+				$process = new Process($catCmd);
+				$process->setTimeout(null);
+				if (0 !== $process->run()) {
+					throw new ProcessFailedException($process);
+				}
 				$fs->remove($file);
 			}
 
 			// Compress the file afterwards if required
 			if ($exportOptions["gzip"]) {
 				$gZipCmd = "gzip " . escapeshellarg($destination) . ".tmp --fast";
-				(new Process($gZipCmd))->mustRun();
+				$process = new Process($gZipCmd);
+				$process->setTimeout(null);
+				if (0 !== $process->run()) {
+					throw new ProcessFailedException($process);
+				}
 				$fs->rename($destination.'.tmp.gz', $destination);
 			}
 

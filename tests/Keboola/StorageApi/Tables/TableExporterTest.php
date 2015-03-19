@@ -23,15 +23,7 @@ class Keboola_StorageApi_Tables_TableExporterTest extends StorageApiTestCase
 		parent::setUp();
 		$this->_initEmptyBucketsForAllBackends();
 		$this->downloadPath = __DIR__ . '/../_tmp/languages.sliced.csv';
-		if (file_exists($this->downloadPath)) {
-			unlink($this->downloadPath);
-		}
 		$this->downloadPathGZip = __DIR__ . '/../_tmp/languages.sliced.csv.gz';
-		if (file_exists($this->downloadPathGZip)) {
-			unlink($this->downloadPathGZip);
-		}
-
-
 	}
 
 	/**
@@ -42,13 +34,9 @@ class Keboola_StorageApi_Tables_TableExporterTest extends StorageApiTestCase
 	{
 		$expectationsFile = __DIR__ . '/../_data/' . $expectationsFileName;
 
-		if (!isset($exportOptions['format'])) {
-			$exportOptions['format'] = 'rfc';
-		}
 		if (!isset($exportOptions['gzip']) ) {
 			$exportOptions['gzip'] = false;
 		}
-
 
 		$tableId = $this->_client->createTable($this->getTestBucketId(self::STAGE_IN, $backend), 'languages', $importFile);
 		$result = $this->_client->writeTable($tableId, $importFile);
@@ -58,7 +46,13 @@ class Keboola_StorageApi_Tables_TableExporterTest extends StorageApiTestCase
 
 		if ($exportOptions['gzip'] === true) {
 			$exporter->exportTable($tableId, $this->downloadPathGZip, $exportOptions);
-			(new \Symfony\Component\Process\Process("gunzip " . escapeshellarg($this->downloadPathGZip)))->mustRun();
+			if (file_exists($this->downloadPath)) {
+				unlink($this->downloadPath);
+			}
+			$process = new \Symfony\Component\Process\Process("gunzip " . escapeshellarg($this->downloadPathGZip));
+			if (0 !== $process->run()) {
+				throw new \Symfony\Component\Process\Exception\ProcessFailedException($process);
+			}
 		} else {
 			$exporter->exportTable($tableId, $this->downloadPath, $exportOptions);
 		}
@@ -70,16 +64,41 @@ class Keboola_StorageApi_Tables_TableExporterTest extends StorageApiTestCase
 
 	}
 
+	/**
+	 * @param $backend
+	 * @dataProvider backends
+	 */
+	public function testLimitParameter($backend)
+	{
+		$importFile = new CsvFile('https://s3.amazonaws.com/keboola-tests/languages.csv');
+		$tableId = $this->_client->createTable($this->getTestBucketId(self::STAGE_IN, $backend), 'languages', $importFile);
+		$this->_client->writeTable($tableId, $importFile);
+
+		$exportOptions = array(
+			'limit' => 2,
+		);
+		$exporter = new TableExporter($this->_client);
+		$exporter->exportTable($tableId, $this->downloadPath, $exportOptions);
+		$this->assertTrue(file_exists($this->downloadPath));
+		$parsed = Client::parseCsv(file_get_contents($this->downloadPath));
+		$this->assertCount($exportOptions['limit'], $parsed);
+	}
 
 	public function tableImportData()
 	{
 		return array(
 			array(self::BACKEND_MYSQL, new CsvFile('https://s3.amazonaws.com/keboola-tests/languages.csv.gz'), 'languages.csv'),
 			array(self::BACKEND_MYSQL, new CsvFile('https://s3.amazonaws.com/keboola-tests/languages.csv.gz'), 'languages.csv', array('gzip' => true)),
+			array(self::BACKEND_MYSQL, new CsvFile('https://s3.amazonaws.com/keboola-tests/numbers.csv'), 'numbers.csv'),
+			array(self::BACKEND_MYSQL, new CsvFile('https://s3.amazonaws.com/keboola-tests/numbers.csv'), 'numbers.two-cols.csv', array('columns' => array('0', '45'))),
 
-			array(self::BACKEND_REDSHIFT, new CsvFile('https://s3.amazonaws.com/keboola-tests/escaping.csv'), 'escaping.raw.out.redshift.csv', array('format' => 'raw')),
-			array(self::BACKEND_REDSHIFT, new CsvFile('https://s3.amazonaws.com/keboola-tests/escaping.csv'), 'escaping.raw.out.redshift.csv', array('gzip' => true, 'format' => 'raw')),
+			array(self::BACKEND_REDSHIFT, new CsvFile('https://s3.amazonaws.com/keboola-tests/escaping.csv'), 'escaping.backslash.redshift.out.csv', array('format' => 'escaped')),
+			array(self::BACKEND_REDSHIFT, new CsvFile('https://s3.amazonaws.com/keboola-tests/escaping.csv'), 'escaping.backslash.redshift.out.csv', array('format' => 'escaped')),
+			array(self::BACKEND_REDSHIFT, new CsvFile('https://s3.amazonaws.com/keboola-tests/escaping.csv'), 'escaping.raw.redshift.out.csv', array('format' => 'raw')),
+			array(self::BACKEND_REDSHIFT, new CsvFile('https://s3.amazonaws.com/keboola-tests/escaping.csv'), 'escaping.raw.redshift.out.csv', array('gzip' => true, 'format' => 'raw')),
 			array(self::BACKEND_REDSHIFT, new CsvFile('https://s3.amazonaws.com/keboola-tests/escaping.csv'), 'escaping.standard.out.csv', array('gzip' => true)),
+			array(self::BACKEND_REDSHIFT, new CsvFile('https://s3.amazonaws.com/keboola-tests/numbers.csv'), 'numbers.csv', array('gzip' => true)),
+			array(self::BACKEND_REDSHIFT, new CsvFile('https://s3.amazonaws.com/keboola-tests/numbers.csv'), 'numbers.two-cols.csv', array('gzip' => true, 'columns' => array('0', '45'))),
 		);
 	}
 

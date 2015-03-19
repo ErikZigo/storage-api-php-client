@@ -105,12 +105,18 @@ class Table
 		$this->filename = $filename;
 
 		$tableNameArr = explode('.', $id);
+		if (count($tableNameArr) != 3) {
+			throw new TableException('Invalid table name - string in form "stage.bucket.table" expected.');
+		}
 		$this->name = $tableNameArr[2];
 
 		$bucketName = $tableNameArr[1];
 		$stage = $tableNameArr[0];
 
 		$this->bucketId = $this->client->getBucketId($bucketName, $stage);
+		if (!$this->bucketId) {
+			throw new TableException("Bucket {$this->bucketId} not found.");
+		}
 
 		$this->transactional = $transactional;
 		$this->delimiter = $delimiter;
@@ -340,7 +346,7 @@ class Table
 			$this->preSave();
 
 			$tempfile = tempnam(__DIR__ . "/tmp/", 'sapi-client-' . $this->_id . '-');
-			$file = new \Keboola\Csv\CsvFile($tempfile);
+			$file = new CsvFile($tempfile, $this->delimiter, $this->enclosure);
 			$file->writeRow($this->header);
 			foreach ($this->data as $row) {
 				$file->writeRow($row);

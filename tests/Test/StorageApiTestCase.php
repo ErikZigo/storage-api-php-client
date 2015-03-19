@@ -28,7 +28,7 @@ class StorageApiTestCase extends \PHPUnit_Framework_TestCase
 		$this->_client = new Keboola\StorageApi\Client(array(
 			'token' => STORAGE_API_TOKEN,
 			'url' => STORAGE_API_URL,
-			'backoffMaxTries' => 11,
+			'backoffMaxTries' => 1,
 		));
 	}
 
@@ -61,7 +61,7 @@ class StorageApiTestCase extends \PHPUnit_Framework_TestCase
 	{
 		foreach ($this->backends() as $backend) {
 			foreach (array(self::STAGE_OUT, self::STAGE_IN) as $stage) {
-				$this->_bucketIds[$stage . '-' . $backend[0]] = $this->_initEmptyBucket('api-tests-' . $backend[0], $stage, $backend[0]);
+				$this->_bucketIds[$stage . '-' . $backend[0]] = $this->_initEmptyBucket('API-tests-' . $backend[0], $stage, $backend[0]);
 			}
 		}
 	}
@@ -308,6 +308,28 @@ class StorageApiTestCase extends \PHPUnit_Framework_TestCase
 			}
 		}
 		return $return;
+	}
+
+	protected function createAndWaitForEvent(\Keboola\StorageApi\Event $event)
+	{
+		$id = $this->_client->createEvent($event);
+
+		sleep(2); // wait for ES refresh
+		$tries = 0;
+		while (true) {
+			try {
+				$this->_client->getEvent($id);
+				return $id;
+			} catch(\Keboola\StorageApi\ClientException $e) {
+				echo 'Event not found: ' . $id . PHP_EOL;
+			}
+			if ($tries > 4) {
+				throw new \Exception('Max tries exceeded.');
+			}
+			$tries++;
+			sleep(pow(2, $tries));
+		}
+
 	}
 
 }

@@ -37,6 +37,32 @@ class Keboola_StorageApi_EventsTest extends StorageApiTestCase
 		$this->assertEquals($event->getType(), $savedEvent['type']);
 	}
 
+	public function testEventCreateWithoutParams()
+	{
+		$event = new Event();
+		$event->setComponent('ex-sfdc')
+			->setType('info')
+			->setMessage('Table Opportunity fetched.');
+
+		$id = $this->createAndWaitForEvent($event);
+
+		// to check if params is object we have to convert received json to objects instead of assoc array
+		// so we have to use raw Http Client
+		$client = new \GuzzleHttp\Client([
+			'base_url' => $this->_client->getApiUrl(),
+		]);
+
+		$response = $client->get('/v2/storage/events/' . $id, array(
+			'headers' => array(
+				'X-StorageApi-Token' => $this->_client->getTokenString(),
+			),
+		))->json(['object' => true]);
+
+		$this->assertInstanceOf('stdclass', $response->params);
+		$this->assertInstanceOf('stdclass', $response->results);
+		$this->assertInstanceOf('stdclass', $response->performance);
+	}
+
 	/**
 	 * @expectedException Keboola\StorageApi\Exception
 	 */
@@ -120,25 +146,4 @@ class Keboola_StorageApi_EventsTest extends StorageApiTestCase
 		$this->assertCount(3, $events);
 	}
 
-	protected function createAndWaitForEvent(Event $event)
-	{
-		$id = $this->_client->createEvent($event);
-
-		sleep(2); // wait for ES refresh
-		$tries = 0;
-		while (true) {
-			try {
-				$this->_client->getEvent($id);
-				return $id;
-			} catch(\Keboola\StorageApi\ClientException $e) {
-				echo 'Event not found: ' . $id . PHP_EOL;
-			}
-			if ($tries > 4) {
-				throw new \Exception('Max tries exceeded.');
-			}
-			$tries++;
-			sleep(pow(2, $tries));
-		}
-
-	}
 }

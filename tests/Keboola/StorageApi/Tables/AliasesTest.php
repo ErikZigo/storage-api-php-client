@@ -1,4 +1,4 @@
-	<?php
+<?php
 /**
  * Created by JetBrains PhpStorm.
  * User: martinhalamicek
@@ -89,6 +89,23 @@ class Keboola_StorageApi_Tables_AliasesTest extends StorageApiTestCase
 		$aliasTable = $this->_client->getTable($aliasTableId);
 		$this->assertEquals($expectedColumns, $aliasTable['columns'], 'Columns autocreate in alias table');
 
+		// test creating alias from alias
+		$callFailed = false;
+		try {
+			$this->_client->createAliasTable($this->getTestBucketId(self::STAGE_OUT), $aliasTableId, 'double-alias');
+		} catch (\Keboola\StorageApi\ClientException $e) {
+			if ($e->getCode() == 400) {
+				$callFailed = true;
+			}
+		}
+		$this->assertTrue($callFailed, 'Alias of already aliased table should fail');
+
+		$this->assertArrayHasKey('isAlias', $sourceTable);
+		$this->assertFalse($sourceTable['isAlias']);
+		$this->assertArrayHasKey('isAlias', $aliasTable);
+		$this->assertTrue($aliasTable['isAlias']);
+
+
 		try {
 			$this->_client->dropTable($sourceTableId);
 			$this->fail('Delete table with associated aliases should not been deleted');
@@ -99,11 +116,12 @@ class Keboola_StorageApi_Tables_AliasesTest extends StorageApiTestCase
 		$this->_client->dropTable($sourceTableId);
 	}
 
-	public function testAliasingShouldNotBeImplementedForRedshiftTables()
+	public function testRedshiftAliasUnsupportedMethods()
 	{
+		$testBucketId = $this->getTestBucketId(self::STAGE_IN, self::BACKEND_REDSHIFT);
 		$importFile = __DIR__ . '/../_data/languages.csv';
 		$sourceTableId = $this->_client->createTable(
-			$this->getTestBucketId(self::STAGE_IN, self::BACKEND_REDSHIFT),
+			$testBucketId,
 			'languages',
 			new CsvFile($importFile),
 			array(
@@ -112,13 +130,293 @@ class Keboola_StorageApi_Tables_AliasesTest extends StorageApiTestCase
 			)
 		);
 
+		$sql = 'SELECT name FROM "' . $testBucketId . '".languages LIMIT 2';
+		$aliasTableId = $this->_client->createRedshiftAliasTable($this->getTestBucketId(self::STAGE_OUT, self::BACKEND_REDSHIFT), $sql, null, $sourceTableId);
+
 		try {
-			$alias = $this->_client->createAliasTable($this->getTestBucketId(self::STAGE_OUT, self::BACKEND_REDSHIFT), $sourceTableId);
-			$this->fail('It should throw exception');
-		} catch(\Keboola\StorageApi\ClientException $e) {
-			$this->assertEquals('notImplemented', $e->getStringCode());
+			$this->_client->setAliasTableFilter($aliasTableId, array('values' => array('VAN')));
+			$this->fail('Setting of alias filter for redshift backend should fail');
+		} catch (\Keboola\StorageApi\ClientException $e) {
+			$this->assertEquals(501, $e->getCode());
 		}
 
+		try {
+			$this->_client->removeAliasTableFilter($aliasTableId, array('values' => array('VAN')));
+			$this->fail('Removing of alias filter for redshift backend should fail');
+		} catch (\Keboola\StorageApi\ClientException $e) {
+			$this->assertEquals(501, $e->getCode());
+		}
+
+		try {
+			$this->_client->enableAliasTableColumnsAutoSync($aliasTableId);
+			$this->fail('Columns syncing of alias filter for redshift backend should fail');
+		} catch (\Keboola\StorageApi\ClientException $e) {
+			$this->assertEquals(501, $e->getCode());
+		}
+
+		try {
+			$this->_client->disableAliasTableColumnsAutoSync($aliasTableId);
+			$this->fail('Columns syncing of alias filter for redshift backend should fail');
+		} catch (\Keboola\StorageApi\ClientException $e) {
+			$this->assertEquals(501, $e->getCode());
+		}
+	}
+
+	public function testRedshiftAliasColumnsShouldNotBeSyncedOnSourceTableColumnAdd()
+	{
+		$testBucketId = $this->getTestBucketId(self::STAGE_IN, self::BACKEND_REDSHIFT);
+		$importFile = __DIR__ . '/../_data/languages.csv';
+		$sourceTableId = $this->_client->createTable(
+			$testBucketId,
+			'languages',
+			new CsvFile($importFile),
+			array(
+				'primaryKey' => 'id',
+				'columns' => array('id', 'name'),
+			)
+		);
+		$aliasBucketId = $this->getTestBucketId(self::STAGE_OUT, self::BACKEND_REDSHIFT);
+
+		$aliasTableId = $this->_client->createRedshiftAliasTable(
+			$aliasBucketId,
+			"SELECT name FROM \"$testBucketId\".languages",
+			null,
+			$sourceTableId
+		);
+
+		$aliasTable = $this->_client->getTable($aliasTableId);
+		$this->assertEquals(array('name'), $aliasTable['columns']);
+
+		$this->_client->addTableColumn($sourceTableId, 'created');
+		$sourceTable = $this->_client->getTable($sourceTableId);
+		$this->assertEquals(array('id', 'name', 'created'), $sourceTable['columns']);
+
+		$aliasTable = $this->_client->getTable($aliasTableId);
+		$this->assertEquals(array('name'), $aliasTable['columns']);
+	}
+
+	public function testRedshiftAliasTimestampColumnShouldBeAllowed()
+	{
+		$testBucketId = $this->getTestBucketId(self::STAGE_IN, self::BACKEND_REDSHIFT);
+		$importFile = __DIR__ . '/../_data/languages.csv';
+		$this->_client->createTable(
+			$testBucketId,
+			'languages',
+			new CsvFile($importFile),
+			array(
+				'primaryKey' => 'id',
+				'columns' => array('id', 'name'),
+			)
+		);
+		$aliasBucketId = $this->getTestBucketId(self::STAGE_OUT, self::BACKEND_REDSHIFT);
+		$aliasTableId = $this->_client->createRedshiftAliasTable(
+			$aliasBucketId,
+			"SELECT id, _timestamp FROM \"$testBucketId\".languages",
+			'languages-alias'
+		);
+
+		$aliasTable = $this->_client->getTable($aliasTableId);
+
+		$this->assertEquals(array('id'), $aliasTable['columns']);
+	}
+
+	public function testRedshiftAliasCanBeCreatedWithoutTimestampColumn()
+	{
+		$testBucketId = $this->getTestBucketId(self::STAGE_IN, self::BACKEND_REDSHIFT);
+		$importFile = __DIR__ . '/../_data/languages.csv';
+		$this->_client->createTable(
+			$testBucketId,
+			'languages',
+			new CsvFile($importFile),
+			array(
+				'primaryKey' => 'id',
+				'columns' => array('id', 'name'),
+			)
+		);
+		$aliasBucketId = $this->getTestBucketId(self::STAGE_OUT, self::BACKEND_REDSHIFT);
+		$aliasTableId = $this->_client->createRedshiftAliasTable(
+			$aliasBucketId,
+			"SELECT id FROM \"$testBucketId\".languages",
+			'languages-alias'
+		);
+
+
+		$data = $this->_client->exportTable($aliasTableId);
+		$this->assertNotEmpty($data);
+
+		// sync export is not allowed
+		try {
+			$this->_client->exportTable($aliasTableId, null, array(
+				'changedSince' => '-1 hour'
+			));
+			$this->fail('Export should throw exception');
+		} catch (\Keboola\StorageApi\ClientException $e) {
+			$this->assertEquals('storage.tables.validation', $e->getStringCode());
+		}
+
+		// async export is not allowed
+		try {
+			$this->_client->exportTableAsync($aliasTableId, array(
+				'changedSince' => '-1 hour'
+			));
+			$this->fail('Export should throw exception');
+		} catch (\Keboola\StorageApi\ClientException $e) {
+			$this->assertEquals('storage.tables.validation', $e->getStringCode());
+		}
+	}
+
+	public function testRedshiftInvalidSqlAliases()
+	{
+		$testBucketId = $this->getTestBucketId(self::STAGE_IN, self::BACKEND_REDSHIFT);
+		$importFile = __DIR__ . '/../_data/languages.csv';
+		$this->_client->createTable(
+			$testBucketId,
+			'languages',
+			new CsvFile($importFile),
+			array(
+				'primaryKey' => 'id',
+				'columns' => array('id', 'name'),
+			)
+		);
+		$aliasBucketId = $this->getTestBucketId(self::STAGE_OUT, self::BACKEND_REDSHIFT);
+
+		$this->_testAliasWithWrongSql($aliasBucketId, "SELECT name AS _name FROM \"$testBucketId\".languages"); // invalid column name
+		$this->_testAliasWithWrongSql($aliasBucketId, "SELECT upper(name), upper(name) FROM \"$testBucketId\".languages"); // duplicate upper column
+		$this->_testAliasWithWrongSql($aliasBucketId, "SELECT name FROM $testBucketId.languages LIMIT 2");
+		$this->_testAliasWithWrongSql($aliasBucketId, "SELECT nonexistent FROM \"$testBucketId\".languages");
+		$this->_testAliasWithWrongSql($aliasBucketId, "DELETE FROM \"$testBucketId\".languages");
+		$this->_testAliasWithWrongSql($aliasBucketId, "SELECTX FROM \"$testBucketId\".languages");
+		$this->_testAliasWithWrongSql($aliasBucketId, "SELECT name FROM $testBucketId.languages LIMIT 2;DELETE FROM \"$testBucketId\".languages");
+	}
+
+	private function _testAliasWithWrongSql($aliasBucketId, $sql)
+	{
+		try {
+			$this->_client->createRedshiftAliasTable($aliasBucketId, $sql, uniqid());
+			$this->fail('Alias with such sql should fail: ' . $sql);
+		} catch (\Keboola\StorageApi\ClientException $e) {
+			$this->assertEquals('buckets.cannotCreateAliasFromSql', $e->getStringCode());
+		}
+	}
+
+	public function testRedshiftAliases()
+	{
+		$testBucketId = $this->getTestBucketId(self::STAGE_IN, self::BACKEND_REDSHIFT);
+		$importFile = __DIR__ . '/../_data/languages.csv';
+		$sourceTableId = $this->_client->createTable(
+			$testBucketId,
+			'languages',
+			new CsvFile($importFile),
+			array(
+				'primaryKey' => 'id',
+				'columns' => array('id', 'name'),
+			)
+		);
+		$aliasBucketId = $this->getTestBucketId(self::STAGE_OUT, self::BACKEND_REDSHIFT);
+
+		$sql = "SELECT name FROM \"$testBucketId\".languages WHERE name='czech'";
+		$aliasTableId = $this->_client->createRedshiftAliasTable($aliasBucketId, $sql, null, $sourceTableId);
+
+		$aliasTable = $this->_client->getTable($aliasTableId);
+		$this->assertArrayHasKey('selectSql', $aliasTable);
+		$this->assertEquals($sql, $aliasTable['selectSql']);
+		$this->assertArrayHasKey('isAlias', $aliasTable);
+		$this->assertEquals(1, $aliasTable['isAlias']);
+		$this->assertEquals($sourceTableId, $aliasTable['sourceTable']['id']);
+
+		$data = $this->_client->exportTable($aliasTableId);
+		$parsedData = Client::parseCsv($data, false);
+		$this->assertEquals(2, count($parsedData));
+		$this->assertEquals(array('czech'), $parsedData[1]);
+
+		$sql2 = "SELECT name FROM \"$testBucketId\".languages WHERE name='english'";
+		$this->_client->updateRedshiftAliasTable($aliasTableId, $sql2);
+
+		$data = $this->_client->exportTable($aliasTableId);
+		$parsedData = Client::parseCsv($data, false);
+		$this->assertEquals(2, count($parsedData));
+		$this->assertEquals(array('english'), $parsedData[1]);
+
+		$this->_client->dropTable($aliasTableId);
+
+
+		// test join
+		$importFile = __DIR__ . '/../_data/languages.csv';
+		$this->_client->createTable(
+			$testBucketId,
+			'languages2',
+			new CsvFile($importFile),
+			array(
+				'primaryKey' => 'id',
+				'columns' => array('id', 'name'),
+			)
+		);
+		$sql = "SELECT l1.name AS name1, l2.name AS name2 FROM \"$testBucketId\".languages l1 LEFT JOIN \"$testBucketId\".languages l2 ON (l1.id=l2.id) WHERE l1.name LIKE 'f%'";
+		$aliasTableId = $this->_client->createRedshiftAliasTable($aliasBucketId, $sql, 'test2');
+
+		$aliasTable = $this->_client->getTable($aliasTableId);
+		$this->assertEquals($sql, $aliasTable['selectSql']);
+		$this->assertArrayNotHasKey('sourceTable', $aliasTable);
+		$data = $this->_client->exportTable($aliasTableId);
+		$parsedData = Client::parseCsv($data, false);
+		$this->assertGreaterThanOrEqual(1, $parsedData);
+		$this->assertEquals(array('name1', 'name2'), current($parsedData));
+
+		$this->_client->dropTable($aliasTableId);
+	}
+
+	public function testRedshiftAliasLastImportDateOfAliasIsNotChangedAfterImportToSourceTable()
+	{
+		$testBucketId = $this->getTestBucketId(self::STAGE_IN, self::BACKEND_REDSHIFT);
+		$importFile = __DIR__ . '/../_data/languages.csv';
+		$sourceTableId = $this->_client->createTable(
+			$testBucketId,
+			'languages',
+			new CsvFile($importFile),
+			array(
+				'primaryKey' => 'id',
+				'columns' => array('id', 'name'),
+			)
+		);
+
+		$aliasBucketId = $this->getTestBucketId(self::STAGE_OUT, self::BACKEND_REDSHIFT);
+		$aliasTableId = $this->_client->createRedshiftAliasTable(
+			$aliasBucketId,
+			"SELECT name FROM \"$testBucketId\".languages",
+			'languages',
+			$sourceTableId
+		);
+
+		$aliasTable = $this->_client->getTable($aliasTableId);
+		$this->assertEmpty($aliasTable['lastChangeDate']);
+		$this->assertEmpty($aliasTable['lastImportDate']);
+
+		// import data into source table
+		$this->_client->writeTable($sourceTableId, new CsvFile($importFile));
+
+		$aliasTable = $this->_client->getTable($aliasTableId);
+		$this->assertEmpty($aliasTable['lastImportDate']);
+	}
+
+	public function testRedshiftAliasAsyncExport()
+	{
+		$testBucketId = $this->getTestBucketId(self::STAGE_IN, self::BACKEND_REDSHIFT);
+		$this->_client->createTable(
+			$testBucketId,
+			'users',
+			new CsvFile(__DIR__ . '/../_data/users.csv')
+		);
+
+		$aliasBucketId = $this->getTestBucketId(self::STAGE_OUT, self::BACKEND_REDSHIFT);
+		$aliasTableId = $this->_client->createRedshiftAliasTable(
+			$aliasBucketId,
+			"SELECT id, name FROM \"$testBucketId\".users",
+			'users'
+		);
+
+		$result = $this->_client->exportTableAsync($aliasTableId);
+		$file = $this->_client->getFile($result['file']['id']);
+		$this->assertNotEmpty(file_get_contents($file['url']));
 	}
 
 	public function testTableAliasFilterModifications()
@@ -568,6 +866,71 @@ class Keboola_StorageApi_Tables_AliasesTest extends StorageApiTestCase
 		$parsedData = Client::parseCsv(file_get_contents($file['url']), false);
 		array_shift($parsedData); // remove header
 		$this->assertEmpty($parsedData);
+	}
+
+	public function testAliasingToSysStageShouldNotBeEnabled()
+	{
+		$sysBucketId = $this->_initEmptyBucket('tests', self::STAGE_SYS);
+		$sourceTableId = $this->_client->createTable(
+			$this->getTestBucketId(self::STAGE_IN),
+			'users',
+			new CsvFile(__DIR__ . '/../_data/users.csv')
+		);
+
+		try {
+			$this->_client->createAliasTable($sysBucketId, $sourceTableId);
+			$this->fail('create alias in sys stage should not be allowed.');
+		} catch (\Keboola\StorageApi\ClientException $e) {
+			$this->assertEquals('storage.buckets.invalidAliasStages', $e->getStringCode());
+		}
+	}
+
+	public function testAliasingFromSysStageShouldNotBeEnabled()
+	{
+		$sysBucketId = $this->_initEmptyBucket('tests', self::STAGE_SYS);
+		$sourceTableId = $this->_client->createTable(
+			$sysBucketId,
+			'users',
+			new CsvFile(__DIR__ . '/../_data/users.csv')
+		);
+
+		try {
+			$this->_client->createAliasTable($this->getTestBucketId(self::STAGE_IN), $sourceTableId);
+			$this->fail('create alias in sys stage should not be allowed.');
+		} catch (\Keboola\StorageApi\ClientException $e) {
+			$this->assertEquals('storage.buckets.invalidAliasStages', $e->getStringCode());
+		}
+	}
+
+	public function testAliasingBetweenInAndOutShouldBeAllowed()
+	{
+		$inTableId = $this->_client->createTable(
+			$this->getTestBucketId(self::STAGE_IN),
+			'users',
+			new CsvFile(__DIR__ . '/../_data/users.csv')
+		);
+
+		$aliasId = $this->_client->createAliasTable($this->getTestBucketId(self::STAGE_OUT), $inTableId);
+		$this->assertNotEmpty($aliasId, 'in -> out');
+		$this->_client->dropTable($aliasId);
+
+		$aliasId = $this->_client->createAliasTable($this->getTestBucketId(self::STAGE_IN), $inTableId, 'users-alias');
+		$this->assertNotEmpty($aliasId, 'in -> in');
+		$this->_client->dropTable($aliasId);
+
+		$outTableId = $this->_client->createTable(
+			$this->getTestBucketId(self::STAGE_OUT),
+			'users',
+			new CsvFile(__DIR__ . '/../_data/users.csv')
+		);
+
+		$aliasId = $this->_client->createAliasTable($this->getTestBucketId(self::STAGE_OUT), $outTableId, 'users-alias-from-out');
+		$this->assertNotEmpty($aliasId, 'out -> out');
+		$this->_client->dropTable($aliasId);
+
+		$aliasId = $this->_client->createAliasTable($this->getTestBucketId(self::STAGE_IN), $outTableId, 'users-alias-from-out');
+		$this->assertNotEmpty($aliasId, 'out -> in');
+		$this->_client->dropTable($aliasId);
 	}
 
 }
